@@ -1,0 +1,59 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+    
+        {
+            "name": "redis-cli",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "redis",
+            "program": "${workspaceFolder}/src/redis-cli",
+            "cwd": "${workspaceFolder}/src",
+            "args": ["-h","192.168.220.31","-p","6379"],
+            "stopAtEntry": false,
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "redis-server",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "redis",
+            "program": "${workspaceFolder}/src/redis-server",
+            "cwd": "${workspaceFolder}/src",
+            "args": ["${workspaceFolder}/redis.conf"],
+            "stopAtEntry": false,
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        }, 
+       ]
+}
