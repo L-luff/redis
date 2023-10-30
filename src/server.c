@@ -2706,6 +2706,7 @@ void initServerConfig(void) {
     atomicSet(server.lruclock,lruclock);
     resetServerSaveParams();
 
+    // save xxx xxx 默认配置，多少秒修改了多少次时进行 rdb
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
     appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
@@ -2758,7 +2759,10 @@ void initServerConfig(void) {
      * redis.conf using the rename-command directive. */
     server.commands = dictCreate(&commandTableDictType,NULL);
     server.orig_commands = dictCreate(&commandTableDictType,NULL);
+    // redis命令初始化，设置值到server.commands 和erver.orig_commands
     populateCommandTable();
+
+    // 对于常用命令的指针
     server.delCommand = lookupCommandByCString("del");
     server.multiCommand = lookupCommandByCString("multi");
     server.lpushCommand = lookupCommandByCString("lpush");
@@ -3158,6 +3162,17 @@ void makeThreadKillable(void) {
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 }
 
+// 主要做的有以下内容
+// 注册相关信号的handler
+// 创建一些固定一些的内容
+// 调整fd数量， max clients配置
+// 调用epoll_create创建fd
+// 初始化server.db 
+// 针对fd，调用socket(),bind() and listen method
+// 向fd根据不同的事件注册handler. 主要handler: acceptTcpHandler method
+//      ---- 当一个新的socket connected,则调用acceptTcpHandler,之后对epoll注册read事件
+//      ---- 与read事件有关联的handler有两个。分别是ae_handler和read_handler,这两个的实现分别是：connection#connSocketEventHandler 和 networking#readQueryFromClient 
+//      ---- 实际上read事件注册的handler是: ae_handler(connection#connSocketEventHandler) 这个方法会调用read_handler
 void initServer(void) {
     int j;
 
@@ -3209,10 +3224,17 @@ void initServer(void) {
         exit(1);
     }
 
+    // 先创建一些命令的的协议内容。例如错误信息，PING/PONG等
     createSharedObjects();
+
+    // 调整能打开的最大fd数量
     adjustOpenFilesLimit();
+
+
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
+
+    // 调用epoll_create
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -3223,12 +3245,15 @@ void initServer(void) {
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
     /* Open the TCP listening socket for the user commands. */
+    // 调用socket,bind, listener
     if (server.port != 0 &&
         listenToPort(server.port,&server.ipfd) == C_ERR) {
         /* Note: the following log text is matched by the test suite. */
         serverLog(LL_WARNING, "Failed listening on port %u (TCP), aborting.", server.port);
         exit(1);
     }
+
+    // tls
     if (server.tls_port != 0 &&
         listenToPort(server.tls_port,&server.tlsfd) == C_ERR) {
         /* Note: the following log text is matched by the test suite. */
@@ -6294,7 +6319,11 @@ int main(int argc, char **argv) {
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+
+    // 初始化基本server配置
     initServerConfig();
+
+    
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
     moduleInitModulesSystem();
@@ -6318,6 +6347,8 @@ int main(int argc, char **argv) {
     /* Check if we need to start in redis-check-rdb/aof mode. We just execute
      * the program main. However the program is part of the Redis executable
      * so that we can easily execute an RDB check on loading errors. */
+
+    //检查rdb,aof文件的正确性
     if (strstr(argv[0],"redis-check-rdb") != NULL)
         redis_check_rdb_main(argc,argv,NULL);
     else if (strstr(argv[0],"redis-check-aof") != NULL)
@@ -6400,10 +6431,18 @@ int main(int argc, char **argv) {
     }
 
     readOOMScoreAdj();
+
+    // 服务初始化, 分配操作，监听socket，初始化事件池等内容
     initServer();
+
+
+
     if (background || server.pidfile) createPidFile();
     if (server.set_proc_title) redisSetProcTitle(NULL);
+
+    // redis log print
     redisAsciiArt();
+
     checkTcpBacklogSettings();
 
     if (!server.sentinel_mode) {
@@ -6470,8 +6509,9 @@ int main(int argc, char **argv) {
 
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
-
+    // 循环监听事件
     aeMain(server.el);
+    // 销毁事件
     aeDeleteEventLoop(server.el);
     return 0;
 }
