@@ -393,13 +393,15 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             eventLoop->beforesleep(eventLoop);
 
         /* Call the multiplexing API, will return only on timeout or when
-         * some event fires. */
+         * some event fires. */ 
+        // invoke epoll_wait 将需要处理的事件组装到aeEventLoop.fired
         numevents = aeApiPoll(eventLoop, tvp);
 
         /* After sleep callback. */
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
             eventLoop->aftersleep(eventLoop);
 
+        // 循环处理事件,对于server的fd，处理的handler: networking::acceptTcpHandler
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
             int mask = eventLoop->fired[j].mask;

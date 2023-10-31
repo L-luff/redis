@@ -3173,6 +3173,8 @@ void makeThreadKillable(void) {
 //      ---- 当一个新的socket connected,则调用acceptTcpHandler,之后对epoll注册read事件
 //      ---- 与read事件有关联的handler有两个。分别是ae_handler和read_handler,这两个的实现分别是：connection#connSocketEventHandler 和 networking#readQueryFromClient 
 //      ---- 实际上read事件注册的handler是: ae_handler(connection#connSocketEventHandler) 这个方法会调用read_handler
+//      ---- 注意： 实际上对于当前server handler,会先注册一个:acceptTcpHandler. 当处理事件时会获取到当前事件注册的handler
+//      ---  将handler和fd进行绑定到aeEventLoop::events, events是数组，索引就是fd
 void initServer(void) {
     int j;
 
@@ -3354,6 +3356,8 @@ void initServer(void) {
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
+
+    // 注册对于每个fd需要处理的事件
     if (createSocketAcceptHandler(&server.ipfd, acceptTcpHandler) != C_OK) {
         serverPanic("Unrecoverable error creating TCP socket accept handler.");
     }
