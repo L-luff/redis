@@ -426,7 +426,8 @@ _quicklistNodeSizeMeetsOptimizationRequirement(const size_t sz,
 #define sizeMeetsSafetyLimit(sz) ((sz) <= SIZE_SAFETY_LIMIT)
 
 REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node,
-                                           const int fill, const size_t sz) {
+                                           const int fill/** 压缩列表的最大大小*/, const size_t sz) {
+    // 判断是否是非空
     if (unlikely(!node))
         return 0;
 
@@ -489,7 +490,7 @@ REDIS_STATIC int _quicklistNodeAllowMerge(const quicklistNode *a,
  *
  * Returns 0 if used existing head.
  * Returns 1 if new head created. */
-int quicklistPushHead(quicklist *quicklist, void *value, size_t sz) {
+int quicklistPushHead(quicklist *quicklist, void *value, size_t sz ) {
     quicklistNode *orig_head = quicklist->head;
     assert(sz < UINT32_MAX); /* TODO: add support for quicklist nodes that are sds encoded (not zipped) */
     if (likely(
@@ -498,7 +499,12 @@ int quicklistPushHead(quicklist *quicklist, void *value, size_t sz) {
             ziplistPush(quicklist->head->zl, value, sz, ZIPLIST_HEAD);
         quicklistNodeUpdateSz(quicklist->head);
     } else {
+        // quicklist->head is null
+
+        // 初始化一个quicklistNode
         quicklistNode *node = quicklistCreateNode();
+
+        // 创建压缩 list,然后node->zl 指向压缩列表
         node->zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_HEAD);
 
         quicklistNodeUpdateSz(node);

@@ -91,7 +91,7 @@ endif
 
 # Override default settings if possible
 -include .make-settings
-
+CFLAGS += -DREDIS_TEST
 FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS)
 FINAL_LDFLAGS=$(LDFLAGS) $(REDIS_LDFLAGS) $(DEBUG)
 FINAL_LIBS=-lm

@@ -710,11 +710,57 @@ static inline void zipAssertValidEntry(unsigned char* zl, size_t zlbytes, unsign
 
 /* Create a new empty ziplist. */
 unsigned char *ziplistNew(void) {
+    /**
+     *
+     * zip list构成
+     * zip list header(10 bytes) + entries + zip list end(1 bytes)
+     *
+     * zip list header:
+     *  zlbytes(4 byte): 整个ziplist所占用的字节
+     *  zltail(4 byte): 到达zip list 尾节点(end entry)的偏移量,通过这个偏移量可以不变里zip list的情况下弹出尾节点
+     *  zlen (2 byte): ziplist中的节点数量，因为只有两个字节大小，所有当这个值小于65535时，该值就是zip list中的节点数量
+     *                  当这个值等于 65535 ，那么需要遍历整个entry才能知道节点数量
+     *
+     *
+     * entries: zip list保存的节点，各个节点长度根据内容而定,每个entry的条目如下:
+     *  pre_entry_length(1byte or 5 byte): 如果上一个entry条目的字节长度小于254,则使用一个字节记录，如果上一个entry条目大于等于254
+     *                                     则第一个字节的值为:254,后面4个字节记录实际的长度
+     *
+     *  encoding (2bit,注意：是2bit而不是2bytes): 有4种类型值,分别是00,01,10,11. 其中00,01,10代表该entry保存的是字符数组
+     *                                          如果是11: 则代表保存的是整数
+     *
+     *  length: length的长度取决于encoding的编码。 当编码为00,01,10时如下：
+     *      00:  encoding+length--> 00bbbbbb  总共1 bytes数据。可以保存长度小于等于63字节的字符数组 (1<<6) -1
+     *      01:  encoding+length--> 00bbbbbb xxxxxxxx: 总共2 bytes数据，可以保存小于等于16383字节的字符数组 (1<<14)-1
+     *      10:  encoding+length--> 10______ aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa: 5 bytes,长度小于等于 4294967295 的字符数组。(1<<32)-1
+     *      表格中的下划线 _ 表示留空，而变量 b 、 x 等则代表实际的二进制数据。为了方便阅读，多个字节之间用空格隔开。
+     *
+     *          当encoding=11 编码如下：
+     *     编码(encoding+length)	    编码长度	content 部分保存的值
+                11000000	        1 byte	int16_t 类型的整数
+                11010000	        1 byte	int32_t 类型的整数
+                11100000	        1 byte	int64_t 类型的整数
+                11110000	        1 byte	24 bit 有符号整数
+                11111110	        1 byte	8 bit 有符号整数
+                1111xxxx	        1 byte	4 bit 无符号整数，介于 0 至 12 之间
+
+          content: 具体保存的数据
+     *
+     * zip list end: 1 byte, 标志zip list的结尾，固定值: 255
+
+     *
+     */
     unsigned int bytes = ZIPLIST_HEADER_SIZE+ZIPLIST_END_SIZE;
     unsigned char *zl = zmalloc(bytes);
+    // 设置zlbytes
     ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);
+    // 设置尾节点偏移量
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE);
+
+    // 设置zlen
     ZIPLIST_LENGTH(zl) = 0;
+
+    //设置zip list end的值，固定值为255
     zl[bytes-1] = ZIP_END;
     return zl;
 }
@@ -923,6 +969,14 @@ unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsigned int
 }
 
 /* Insert item at "p". */
+/**
+ *
+ * @param zl : zip list指针
+ * @param p : 如果where是ZIPLIST_HEAD,那么该指针指向的是第一个条目，反之指向的是最后一个条目，如果没有数据，指向的就是end
+ * @param s : 需要插入的数据
+ * @param slen : 需要插入的数据长度
+ * @return
+ */
 unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
     size_t curlen = intrev32ifbe(ZIPLIST_BYTES(zl)), reqlen, newlen;
     unsigned int prevlensize, prevlen = 0;
@@ -935,9 +989,13 @@ unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned cha
     zlentry tail;
 
     /* Find out prevlen for the entry that is inserted. */
+
     if (p[0] != ZIP_END) {
+        // zip entry有数据的情况下
+        // entry p在有数据的情况下，先拿到当前p的 pre_entry_length相关数据
         ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
     } else {
+        // zip entry is nil
         unsigned char *ptail = ZIPLIST_ENTRY_TAIL(zl);
         if (ptail[0] != ZIP_END) {
             prevlen = zipRawEntryLengthSafe(zl, curlen, ptail);
@@ -945,6 +1003,7 @@ unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned cha
     }
 
     /* See if the entry can be encoded */
+    // 判断是否可以先将s转换成整数
     if (zipTryEncoding(s,slen,&value,&encoding)) {
         /* 'encoding' is set to the appropriate integer encoding */
         reqlen = zipIntSize(encoding);
@@ -1142,6 +1201,7 @@ unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
 
 unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int slen, int where) {
     unsigned char *p;
+    // 定位到需要处理的指针位置
     p = (where == ZIPLIST_HEAD) ? ZIPLIST_ENTRY_HEAD(zl) : ZIPLIST_ENTRY_END(zl);
     return __ziplistInsert(zl,p,s,slen);
 }
